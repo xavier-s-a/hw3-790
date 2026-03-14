@@ -9,3 +9,10 @@ report/.aux
 /report/.toc
 /report/.xdv
 /report/.out
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
