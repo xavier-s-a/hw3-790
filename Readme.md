@@ -25,14 +25,14 @@ CUDA compatible PyTorch
 
 ## Files
 
-jax_jit_analysis.ipynb  
-Experiments for JAX JIT compilation.
+1. jax_jit_analysis.ipynb  
+   Experiments for JAX JIT compilation.
 
-torch_compile_analysis.ipynb  
-Experiments for PyTorch torch.compile.
+2. torch_compile_analysis.ipynb  
+   Experiments for PyTorch torch.compile.
 
-report.pdf  
-Final analysis report with explanations and plots.
+3. report.pdf  
+   Final analysis report with explanations and plots.
 
 ## Running the notebooks
 
@@ -46,5 +46,5 @@ Run in order:
 All plots and results will be generated automatically.
 
 ## Author
-Xavier S Adettu 
-COMPSCI 790
+- Xavier S Adettu 
+- COMPSCI 790
