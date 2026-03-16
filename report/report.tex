@@ -178,7 +178,6 @@ During the first call:
 These compilation steps introduce overhead during the first execution. Later executions reuse the cached compiled graph and therefore run significantly faster.
 
 \section{Programming: JAX JIT Deep Dive}
-\section{Programming: JAX JIT Deep Dive}
 
 \subsection{Part 1: Measuring Compilation Overhead}
 
@@ -188,7 +187,7 @@ The first JIT call is slower because JAX must trace the function and compile it 
 
 As the matrix size increases, eager execution becomes slower because each operation is executed individually. JIT compilation improves performance because the compiled program optimises the sequence of operations and reduces interpreter overhead.
 
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.75\linewidth]{jit1.png}
 \caption{Execution time comparison between eager execution, first JIT call, and second JIT call for different matrix sizes.}
@@ -205,7 +204,7 @@ This behaviour is called \textbf{shape specialization}. JAX generates optimised 
 
 The timing results show that calls with previously seen shapes execute faster, while calls with new shapes include additional compilation overhead.
 
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.7\linewidth]{jax1.png}
 \caption{Execution time for different input shapes demonstrating retracing behaviour.}
@@ -243,7 +242,7 @@ The eager backend executes operations directly without compilation. The aot\_eag
 
 The performance results show that different backends have different runtime behaviour due to their compilation strategies. Compilation overhead can make some backends slower for small workloads, while optimised backends provide better performance for repeated execution.
 
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.7\linewidth]{be1.png}
 \caption{Average runtime comparison for different torch.compile backends.}
@@ -273,7 +272,7 @@ However, Python side-effect operations such as \texttt{print()} and list modific
 
 The resulting computation graph therefore contains only the tensor operations required for numerical computation.
 
-\begin{figure}[h]
+\begin{figure}[H]
 \centering
 \begin{tikzpicture}[
 node distance=2cm,
