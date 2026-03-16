@@ -178,13 +178,129 @@ During the first call:
 These compilation steps introduce overhead during the first execution. Later executions reuse the cached compiled graph and therefore run significantly faster.
 
 \section{Programming: JAX JIT Deep Dive}
-\subsection{Part 1}
-\subsection{Part 2}
-\subsection{Part 3}
+\section{Programming: JAX JIT Deep Dive}
+
+\subsection{Part 1: Measuring Compilation Overhead}
+
+In this experiment we measured the runtime of a function performing several elementwise operations on matrices of different sizes. Three cases were evaluated: eager execution (without JIT), the first call with JIT compilation, and the second call using the cached compiled function.
+
+The first JIT call is slower because JAX must trace the function and compile it using XLA. This compilation step introduces overhead. However, the second JIT call reuses the compiled program and therefore runs significantly faster.
+
+As the matrix size increases, eager execution becomes slower because each operation is executed individually. JIT compilation improves performance because the compiled program optimises the sequence of operations and reduces interpreter overhead.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.75\linewidth]{jit1.png}
+\caption{Execution time comparison between eager execution, first JIT call, and second JIT call for different matrix sizes.}
+\end{figure}
+
+
+\subsection{Part 2: Shape Specialization}
+
+In this part we analysed how JAX handles inputs with different tensor shapes. A JIT compiled function computing the mean of each row was executed with multiple input shapes.
+
+Using \texttt{jax.make\_jaxpr}, we observed that JAX retraces the computation when the input tensor shape changes. When the same shape is used again, the previously compiled program is reused.
+
+This behaviour is called \textbf{shape specialization}. JAX generates optimised machine code specific to each input shape. When a new shape appears, the compiler must retrace and generate a new compiled version of the function.
+
+The timing results show that calls with previously seen shapes execute faster, while calls with new shapes include additional compilation overhead.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.7\linewidth]{jax1.png}
+\caption{Execution time for different input shapes demonstrating retracing behaviour.}
+\end{figure}
+
+
+\subsection{Part 3: Operator Fusion Analysis}
+
+This experiment evaluates the benefits of operator fusion using JIT compilation. The function
+$f(x) = \sum_{i=1}^{100} (\sin^i(x) + \cos^i(x))$was implemented using two approaches.
+
+In the eager version, each elementwise operation (sine, cosine, and addition) is executed independently. This leads to a large number of individual operations and higher kernel launch overhead.
+
+In the JIT compiled version, the XLA compiler analyses the computation graph and performs \textbf{operator fusion}. Multiple elementwise operations are combined into fewer execution kernels. This reduces kernel launch overhead and improves memory efficiency.
+
+The measured runtime shows a significant performance improvement for the JIT version. The speedup occurs because the compiler executes many operations together instead of launching separate kernels for each operation.
+
+The theoretical number of operations is approximately 10,200 elementwise operations (5050 sine operations, 5050 cosine operations, and around 100 additions). In eager execution these operations may launch many kernels, whereas the JIT compiled version fuses them into fewer kernels.
+
+The measured execution times show that the JIT compiled version achieves a much faster runtime due to reduced overhead and improved memory locality.
+
 \section{Programming: PyTorch compile Analysis}
-\subsection{Part 1}
-\subsection{Part 2}
-\subsection{Part 3}
+\subsection{Part 1: Comparing Backends}
+
+In this experiment we compared different compilation backends supported by \texttt{torch.compile}. A simple neural network with three linear layers and ReLU activations was executed using the following backends:
+
+\begin{itemize}
+\item eager
+\item aot\_eager
+\item inductor
+\item cudagraphs
+\end{itemize}
+
+The eager backend executes operations directly without compilation. The aot\_eager backend traces the computation graph but still runs operations using eager kernels. The inductor backend performs aggressive compilation and optimisation to generate fused kernels. The cudagraphs backend records the execution graph and reduces kernel launch overhead.
+
+The performance results show that different backends have different runtime behaviour due to their compilation strategies. Compilation overhead can make some backends slower for small workloads, while optimised backends provide better performance for repeated execution.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.7\linewidth]{be1.png}
+\caption{Average runtime comparison for different torch.compile backends.}
+\end{figure}
+
+
+\subsection{Part 2: Debugging Compilation Failures}
+
+Some Python constructs cannot be efficiently compiled by \texttt{torch.compile}. We tested several problematic functions to analyse compilation failures.
+
+The first example used a Python conditional statement depending on a tensor value. TorchDynamo reported a graph break because tensor-dependent control flow cannot be directly traced into a static computation graph.
+
+The second example used a Python dictionary to store tensor values. Python data structures are not part of tensor computation graphs, which results in graph breaks.
+
+The third example used a Python loop performing repeated exponentiation operations. Although this function can be compiled, the loop structure leads to suboptimal performance because the compiler cannot fully optimise repeated operations.
+
+Using \texttt{torch.dynamo.explain()}, we identified graph breaks and debugging information describing why compilation failed or was inefficient. By rewriting the functions using tensor operations and removing Python side effects, the compiler was able to successfully capture the computation graph and execute the code more efficiently.
+
+
+\subsection{Part 3: Graph Capture and Inspection}
+
+To analyse graph capture behaviour, we created a function performing two matrix multiplications, a ReLU activation, a residual addition, and layer normalization. The function also included a Python print statement and a list modification.
+
+Using \texttt{torch.dynamo.explain()}, we observed that tensor operations such as matrix multiplication, ReLU activation, addition, and layer normalization were captured in the computation graph.
+
+However, Python side-effect operations such as \texttt{print()} and list modification were not included in the graph. TorchDynamo cannot represent these operations as tensor computations, so they are executed outside the compiled graph.
+
+The resulting computation graph therefore contains only the tensor operations required for numerical computation.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+node distance=2cm,
+box/.style={rectangle, draw, minimum width=2.5cm, minimum height=0.8cm},
+arrow/.style={->, thick}
+]
+
+\node[box] (input) {Input $x$};
+\node[box, below of=input] (mat1) {MatMul $xW_1$};
+\node[box, below of=mat1] (relu) {ReLU};
+\node[box, below of=relu] (mat2) {MatMul $W_2$};
+\node[box, below of=mat2] (add) {Residual Add};
+\node[box, below of=add] (norm) {LayerNorm};
+\node[box, below of=norm] (output) {Output};
+
+\draw[arrow] (input) -- (mat1);
+\draw[arrow] (mat1) -- (relu);
+\draw[arrow] (relu) -- (mat2);
+\draw[arrow] (mat2) -- (add);
+\draw[arrow] (add) -- (norm);
+\draw[arrow] (norm) -- (output);
+
+\end{tikzpicture}
+\caption{Captured computation graph from \texttt{torch.compile}.}
+\end{figure}
+
+
 \begin{thebibliography}{9}
 
 \bibitem{jit_compilation_ml}
