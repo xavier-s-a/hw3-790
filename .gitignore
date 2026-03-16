@@ -16,3 +16,4 @@ report/.aux
 *.fls
 *.log
 *.out
+.DS_Store
