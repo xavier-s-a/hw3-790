@@ -5,6 +5,34 @@
 \usepackage{float}
 \usepackage{graphicx}
 \usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\renewcommand{\thesubsection}{\arabic{subsection}}
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{keywordcolor}{RGB}{0,0,180}
+\definecolor{stringcolor}{RGB}{163,21,21}
+\definecolor{commentcolor}{RGB}{0,128,0}
+\definecolor{numbercolor}{RGB}{128,0,128}
+\definecolor{decoratorcolor}{RGB}{200,100,0}
+
+\lstdefinestyle{py}{
+  language=Python,
+  backgroundcolor=\color{codebg},
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{keywordcolor}\bfseries,
+  stringstyle=\color{stringcolor},
+  commentstyle=\color{commentcolor}\itshape,
+  numberstyle=\tiny\color{gray},
+  numbers=left,
+  stepnumber=1,
+  numbersep=8pt,
+  showstringspaces=false,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{black!30},
+  tabsize=2,
+  morekeywords={self},
+}
 \hypersetup{
             pdfauthor={Xavier Sebastian A}, 
             pdftitle={Compsci:790-HW3}, 
@@ -15,7 +43,6 @@
             pdfborder={0 0 0}, 
             pdfstartview=FitH
         }
-\usetikzlibrary{arrows,positioning}
 
 \title{Homework 3}
 \author{Xavier Sebastian A}
@@ -24,7 +51,139 @@
 \begin{document}
 
 \maketitle
-\section{Task 1}
+\section{Conceptual Questions}
+\subsection{Explain the difference between tracing-based and scripting-
+based JIT compilation. Give a concrete example of a Python function
+that would work correctly with scripting but fail with tracing}
+\subsubsection*{Answer:}
+Tracing-based JIT runs the function once and records the operations that happen during that execution. 
+It builds a computation graph based on that single run. 
+Because of this, it cannot correctly handle control flow that depends on input values.
 
+Scripting-based JIT analyses the program code directly and converts it into an intermediate representation. 
+Since it understands the structure of the code, it can correctly handle conditions, loops, and other control flow statements.
+The following example demonstrates scripting-based compilation in PyTorch \cite{jit_compilation_ml}:
+
+\begin{lstlisting}[style=py]
+@torch.jit.script # Example decorator
+def conditional_op(x, threshold):
+  # Scripting compiler parses this structure
+  if x.sum() > threshold:
+    result = x * 2
+  else:
+    result = x + 1
+  return result
+\end{lstlisting}
+Tracing may record only one branch of the if statement depending on the input used during tracing. 
+If the condition later changes, the result may become incorrect. 
+Scripting works correctly because it keeps both branches in the compiled graph.
+
+\subsection{Consider the following JAX function:}
+\begin{lstlisting}[style=py]
+@jax.jit
+def process_batch(data, batch_size):
+    num_batches = data.shape[0] // batch_size
+    results = []
+    for i in range(num_batches):
+        batch = data[i * batch_size:(i + 1) * batch_size]
+        results.append(jnp.sum(batch ** 2))
+    return jnp.array(results)
+\end{lstlisting}
+What potential performance issue might arise with this JIT-compiled function? How would you fix it?
+\subsubsection*{Answer:}
+The function creates a Python list and appends values inside a loop. 
+Python loops and list operations reduce the efficiency of JAX because they prevent proper optimisation during compilation.
+JAX works best when operations are written in a vectorised form using array operations. 
+A better solution is to reshape the data and compute the result using built in array functions.
+Fixed version:
+\begin{lstlisting}[style=py]
+@jax.jit
+def process_batch(data, batch_size):
+    num_batches = data.shape[0] // batch_size
+    data = data[:num_batches * batch_size]
+    data = data.reshape(num_batches, batch_size)
+    return jnp.sum(data ** 2, axis=1)
+\end{lstlisting}
+This removes the Python loop and allows JAX to perform faster compiled execution.
+
+\subsection{The lecture mentioned that operator fusion can reduce memory traffic. 
+For the expression $y = \sin(\cos(x)) + \exp(x)$ calculate:}
+
+\begin{enumerate}
+\item[(a)] The number of GPU kernel launches and global memory
+reads/writes in eager mode (assume each operation reads inputs from
+global memory and writes outputs to global memory).
+
+\item[(b)] The number in fused mode (one kernel, intermediate values
+stored in registers).
+
+\item[(c)] The theoretical memory bandwidth reduction factor.
+\end{enumerate}
+
+\subsubsection*{Answer:}
+\begin{enumerate}
+    \item [(a)]
+    Each operation runs as a separate GPU kernel.
+    Operations performed:
+    \begin{itemize}
+    \item $\cos(x)$
+    \item $\sin(\cdot)$
+    \item $\exp(x)$
+    \item addition
+    \end{itemize}
+    Total kernel launches $= 4$.Each operation reads data from global memory and writes the results back to global memory.
+
+\item[(b)]
+All operations are combined into a single GPU kernel.Total kernel launches $= 1$.Intermediate values remain inside GPU registers instead of being written to global memory.
+
+\item[(c)]
+In eager execution there are roughly $8$ memory operations ($4$ reads and $4$ writes).In fused execution there are $2$ memory operations ($1$ read and $1$ write).
+Therefore, the theoretical reduction factor is $\frac{8}{2} = 4$.So the memory traffic is reduced by approximately four times.
+\end{enumerate}
+
+\subsection{Why does dynamic control flow (e.g., if statements depending
+on tensor values) pose a challenge for JIT compilation? Explain both the
+JAX and PyTorch approaches to handling this.}
+
+
+\subsubsection*{Answer:}
+
+Dynamic control flow occurs when program execution depends on values that are known only at runtime. JIT compilers typically construct a static computation graph before execution. If the program contains branches that depend on runtime tensor values, the compiler cannot determine the correct execution path during compilation.
+
+JAX addresses this issue by providing specialised control-flow primitives such as \texttt{lax.cond}, \texttt{lax.scan}, and \texttt{lax.while\_loop}. These primitives explicitly represent control flow within the compiled graph.
+
+PyTorch addresses the issue using \texttt{TorchDynamo}, which traces Python execution and captures graph segments dynamically. When unsupported control flow appears, the system may partially compile the program or fall back to eager execution.
+
+\subsection{When you run \texttt{torch.compile} on a function for the first time,
+it’s slower than the eager version. Why? What specific steps happen
+during this first call that don’t happen in subsequent calls?}
+
+\subsubsection*{Answer:}
+
+The first execution of a function compiled with \texttt{torch.compile} involves several additional steps before the program runs.
+
+During the first call:
+
+\begin{itemize}
+\item \texttt{TorchDynamo} traces the Python function and extracts a computation graph.
+\item The graph is analysed and optimised.
+\item \texttt{TorchInductor} or another backend compiler generates optimised kernels.
+\item The generated code is compiled for the target hardware.
+\item The compiled graph is cached for reuse.
+\end{itemize}
+
+These compilation steps introduce overhead during the first execution. Later executions reuse the cached compiled graph and therefore run significantly faster.
+
+
+\begin{thebibliography}{9}
+
+\bibitem{jit_compilation_ml}
+JIT Tracing vs Scripting
+\textit{Tracing vs. Scripting Approaches.}  
+\url{https://apxml.com/courses/compiler-runtime-optimization-ml/chapter-7-jit-compilation-ml/jit-tracing-vs-scripting}
+
+
+
+\end{thebibliography}
 \end{document}
 
